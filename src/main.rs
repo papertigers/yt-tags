@@ -1,10 +1,7 @@
-use std::{
-    ffi::OsStr,
-    fs::{self},
-    path::PathBuf,
-};
+use fs_err as fs;
+use std::{ffi::OsStr, path::PathBuf};
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use id3::{ErrorKind, Tag, TagLike};
 
 fn process_album(artist: &OsStr, path: &PathBuf) -> anyhow::Result<()> {
@@ -28,13 +25,13 @@ fn process_album(artist: &OsStr, path: &PathBuf) -> anyhow::Result<()> {
         };
         let artist = artist.to_string_lossy();
         let album = album.to_string_lossy();
-        let track = track_path.file_name().expect("has basename");
+        let track = track_path.file_stem().context("has file stem")?;
         tag.set_artist(artist.as_ref());
         tag.set_album_artist(artist.as_ref());
         tag.set_album(album.as_ref());
 
-        // When we split chapters from youtube we create titles that
-        // look like "NUM - TITLE"
+        // We expect tracks to be in the following format:
+        // "NUM - TITLE.extension"
         let title_track = track.to_string_lossy();
         let (track, title) = match title_track.split_once('-') {
             Some(elm) => (elm.0.trim(), elm.1.trim()),
@@ -53,10 +50,9 @@ fn process_album(artist: &OsStr, path: &PathBuf) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let path = match std::env::args().nth(1) {
-        Some(path) => path,
-        None => bail!("Need to pass a path to an Artist"),
-    };
+    let path = std::env::args()
+        .nth(1)
+        .context("Need to pass a path to an Artist")?;
 
     let full_path = fs::canonicalize(path)?;
     if !full_path.is_dir() {
@@ -64,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Grab the artist
-    let artist = full_path.file_name().expect("has basename");
+    let artist = full_path.file_name().context("has basename")?;
 
     // Find Albums
     let albums: Vec<_> = fs::read_dir(&full_path)?
